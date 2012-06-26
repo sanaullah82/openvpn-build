@@ -227,6 +227,7 @@ build_openvpn() {
 		$(empty_ifelse "${DO_STATIC}" --enable-pkcs11 --disable-plugins) \
 		--enable-lzo \
 		--with-special-build="${SPECIAL_BUILD}" \
+		"$(test -n "${BUILD_FOR_WINDOWS}" && echo "--with-plugindir=%ProgramFiles%\\\\\\\\OpenVPN\\\\\\\\plugins")" \
 		|| die "Configure openvpn"
 	${MAKE} ${MAKEOPTS} ${MAKE_AUTOCONF_INSTALL_TARGET} DESTDIR="${OPENVPN_ROOT}" || die "make openvpn"
 
