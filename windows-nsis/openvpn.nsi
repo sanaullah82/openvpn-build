@@ -168,6 +168,8 @@ Section /o "${PACKAGE_NAME} User-Space Components" SecOpenVPNUserSpace
 
 	SetOutPath "$INSTDIR\bin"
 	File "${OPENVPN_ROOT}\bin\openvpn.exe"
+	CreateDirectory "$INSTDIR\plugins"
+	!insertmacro WriteRegStringIfUndef HKLM "SOFTWARE\${PACKAGE_NAME}" "plugindir"    "$INSTDIR\plugins"
 
 	SetOutPath "$INSTDIR\doc"
 	File "${OPENVPN_ROOT}\share\doc\openvpn\INSTALL-win32.txt"
