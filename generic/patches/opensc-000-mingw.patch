@@ -1,0 +1,16 @@
+diff -urNp opensc-0.13.0.org/src/tools/pkcs11-tool.c opensc-0.13.0/src/tools/pkcs11-tool.c
+--- opensc-0.13.0.org/src/tools/pkcs11-tool.c	2012-12-04 16:43:40.000000000 +0200
++++ opensc-0.13.0/src/tools/pkcs11-tool.c	2013-09-26 09:46:55.386850832 +0300
+@@ -389,8 +389,12 @@ int main(int argc, char * argv[])
+ 	CK_RV rv;
+ 
+ #ifdef _WIN32
++#ifdef _MSC_VER
+ 	if (_set_fmode(_O_BINARY) == EINVAL)
+ 		util_fatal("Cannot set FMODE to O_BINARY");
++#else
++	_fmode = _O_BINARY;
++#endif
+ #endif
+ 
+ #ifdef ENABLE_OPENSSL

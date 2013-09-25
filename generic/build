@@ -92,16 +92,21 @@ download1() {
 download() {
 	for url in \
 		${LZO_URL} \
+		${ZLIB_URL} \
 		${OPENSSL_URL} \
 		${PKCS11_HELPER_URL} \
 		${TAP_WINDOWS_URL} \
 		${OPENVPN_URL} \
-		${OPENVPN_GUI_URL};
+		${OPENVPN_GUI_URL} \
+		${OPENSC_URL} \
+		${LIBP11_URL} \
+		${ENGINE_PKCS11_URL} \
+		;
 		do
 		download1 "${url}"
 	done
 
-	if [ "$(ls "${SOURCESROOT}" | wc -l | sed 's/[ \t]//g')" != 6 ]; then
+	if [ "$(ls "${SOURCESROOT}" | wc -l | sed 's/[ \t]//g')" != 10 ]; then
 		die "sources is unclean."
 	fi
 }
@@ -167,11 +172,33 @@ extract() {
 }
 
 build_dep() {
+	if [ -n "${BUILD_OPENSC}" ]; then
+		echo "Build zlib"
+		cd "${BUILDROOT}/zlib"* || die "cd zlib"
+		if [ -n "${BUILD_FOR_WINDOWS}" ]; then
+			${MAKE} -f win32/Makefile.gcc \
+			PREFIX=${CHOST:+${CHOST}-} \
+			INCLUDE_PATH="${OPENVPN_ROOT}/include" \
+			LIBRARY_PATH="${OPENVPN_ROOT}/lib" \
+			BINARY_PATH="${OPENVPN_ROOT}/bin" \
+			SHARED_MODE=1 \
+			install || \
+			die "make zlib"
+		else
+			CHOST="${CHOST}" LDCONFIG=true CFLAGS="${CFLAGS} -fPIC -fpic -s" \
+				./configure --shared --prefix="${OPENVPN_TARGET_ROOT}" || die "configure zlib"
+			${MAKE} install DESTDIR="${OPENVPN_ROOT}" || die "make zlib"
+		fi
+
+		fixup_la
+	fi
+
 	echo "Build openssl"
 	cd "${BUILDROOT}/openssl"* || die "cd openssl"
 
 	./Configure --prefix="/${TARGET_ROOT}" --cross-compile-prefix=${CHOST:+${CHOST}-} \
 		$(empty_ifelse "${DO_STATIC}" shared no-dso) \
+		$(empty_ifelse "${BUILD_OPENSC}" "" "zlib-dynamic ${ZLIB_CFLAGS}") \
 		$(CHOST="${VIRTUAL_CHOST}" "${SCRIPTROOT}/gentoo.config-0.9.8") \
 		${CFLAGS} ${LDFLAGS} \
 		no-multilib \
@@ -253,6 +280,47 @@ build_openvpn_gui() {
 	restore_la
 }
 
+build_opensc() {
+
+	fixup_la
+
+	echo "Build opensc"
+	cd "${BUILDROOT}"/opensc-* || die "cd opensc"
+
+	./configure ${CONFIGOPTS} ${EXTRA_OPENSC_CONFIG} \
+		--enable-openssl \
+		--enable-zlib \
+		OPENSSL_CFLAGS="${OPENSSL_CRYPTO_CFLAGS}" \
+		OPENSSL_LIBS="${OPENSSL_CRYPTO_LIBS}" \
+		|| die "Configure opensc"
+	${MAKE} ${MAKEOPTS} ${MAKE_AUTOCONF_INSTALL_TARGET} DESTDIR="${OPENVPN_ROOT}" || die "make opensc"
+	fixup_la
+
+	echo "Build libp11"
+	cd "${BUILDROOT}"/libp11-* || die "cd libp11"
+
+	./configure ${CONFIGOPTS} ${EXTRA_LIBP11_CONFIG} \
+		OPENSSL_CFLAGS="${OPENSSL_CRYPTO_CFLAGS}" \
+		OPENSSL_LIBS="${OPENSSL_CRYPTO_LIBS}" \
+		|| die "Configure libp11"
+	${MAKE} ${MAKEOPTS} ${MAKE_AUTOCONF_INSTALL_TARGET} DESTDIR="${OPENVPN_ROOT}" || die "make libp11"
+	fixup_la
+
+	echo "Build engine_pkcs11"
+	cd "${BUILDROOT}"/engine_pkcs11-* || die "cd engine_pkcs11"
+
+	./configure ${CONFIGOPTS} ${EXTRA_ENGINE_PKCS11_CONFIG} \
+		OPENSSL_CFLAGS="${OPENSSL_CRYPTO_CFLAGS}" \
+		OPENSSL_LIBS="${OPENSSL_CRYPTO_LIBS}" \
+		LIBP11_LIBS="-lp11" \
+		|| die "Configure engine_pkcs11"
+	${MAKE} ${MAKEOPTS} ${MAKE_AUTOCONF_INSTALL_TARGET} DESTDIR="${OPENVPN_ROOT}" || die "make engine_pkcs11"
+	fixup_la
+
+	cd "${SCRIPTROOT}"
+	restore_la
+}
+
 copy_docs() {
 	echo "Copying documents"
 	mkdir -p "${OPENVPN_ROOT}/share/doc/package"
@@ -314,6 +382,7 @@ main() {
 	if [ -z "${DO_ONLY_DEPS}" ]; then
 		build_openvpn
 		[ -n "${BUILD_FOR_WINDOWS}" ] && build_openvpn_gui
+		[ -n "${BUILD_OPENSC}" ] && build_opensc
 		copy_docs
 		copy_sources
 		clean_empty_dirs
@@ -356,6 +425,8 @@ else
 	MAKE_AUTOCONF_INSTALL_TARGET="install"
 fi
 
+export ZLIB_CFLAGS="-I${OPENVPN_ROOT}/include"
+export ZLIB_LIBS="-L${OPENVPN_ROOT}/lib -lz"
 export OPENSSL_CRYPTO_CFLAGS="-I${OPENVPN_ROOT}/include"
 export OPENSSL_CRYPTO_LIBS="-L${OPENVPN_ROOT}/lib -lcrypto"
 export OPENSSL_SSL_CFLAGS="-I${OPENVPN_ROOT}/include"
@@ -372,6 +443,7 @@ if [ -n "${BUILD_FOR_WINDOWS}" ]; then
 		--sbindir=/bin \
 	"
 	export PKG_CONFIG="true"
+	BUILD_OPENSC=1
 fi
 
 while [ -n "$1" ]; do
